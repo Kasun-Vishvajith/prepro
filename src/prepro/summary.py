@@ -1,5 +1,7 @@
+from typing import Any, Dict, List
+
 import pandas as pd
-from typing import Dict, Any, List
+
 
 class SummaryResult:
     """
@@ -18,7 +20,11 @@ class SummaryResult:
         elif index == 1:
             return self.column_details
         else:
-            raise IndexError("SummaryResult index out of range. Use 0 for general summary or 1 for detailed table.")
+            msg = (
+                "SummaryResult index out of range. "
+                "Use 0 for general summary or 1 for detailed table."
+            )
+            raise IndexError(msg)
 
     def __repr__(self) -> str:
         # Custom representation to output a nice clean view when printed
@@ -28,26 +34,30 @@ class SummaryResult:
         lines.append("=" * 50)
         lines.append(f"Total Rows:                   {self.general['nrows']}")
         lines.append(f"Total Columns:                {self.general['ncolumns']}")
-        lines.append(f"Rows with any missing values: {self.general['missing_rows']} ({self.general['missing_rows_pct']:.2f}%)")
+        missing_count = self.general["missing_rows"]
+        missing_pct = self.general["missing_rows_pct"]
+        lines.append(
+            f"Rows with any missing values: {missing_count} ({missing_pct:.2f}%)"
+        )
         lines.append("=" * 50)
         lines.append("\nColumn Details:")
-        
+
         # Simple text representation of the 2D table
         headers = self.column_details[0]
         rows = self.column_details[1:]
-        
+
         # Calculate widths
         widths = [len(h) for h in headers]
         for row in rows:
             for i, val in enumerate(row):
                 widths[i] = max(widths[i], len(str(val)))
-                
+
         fmt = "  ".join(f"{{:<{w}}}" for w in widths)
         lines.append(fmt.format(*headers))
         lines.append("-" * (sum(widths) + 2 * (len(widths) - 1)))
         for row in rows:
             lines.append(fmt.format(*[str(val) for val in row]))
-            
+
         return "\n".join(lines)
 
 
@@ -69,7 +79,7 @@ def summary(df: pd.DataFrame) -> SummaryResult:
         raise TypeError("Input must be a pandas DataFrame")
 
     nrows, ncolumns = df.shape
-    
+
     # Calculate rows with any missing values
     missing_rows_mask = df.isnull().any(axis=1)
     missing_rows_count = int(missing_rows_mask.sum())
@@ -87,30 +97,43 @@ def summary(df: pd.DataFrame) -> SummaryResult:
 
     # Create the column details starting with headers
     column_details = [
-        ["Column", "Dtype", "Missing Count", "Missing Pct", "Unique Count", "Common Placeholders"]
+        [
+            "Column",
+            "Dtype",
+            "Missing Count",
+            "Missing Pct",
+            "Unique Count",
+            "Common Placeholders",
+        ]
     ]
 
     for col in df.columns:
         series = df[col]
         dtype = str(series.dtype)
-        
+
         # Standard missing values
         null_count = int(series.isnull().sum())
         null_pct = float((null_count / nrows) * 100) if nrows > 0 else 0.0
-        
+
         # Unique count
         unique_count = int(series.nunique())
-        
-        # Check for placeholder string missing values in object/string columns
+
+        # Check for placeholder string missing values in object/string/category columns
         placeholders_found = {}
-        if series.dtype == "object" or dtype == "string":
+        if "str" in dtype or "object" in dtype or "category" in dtype:
             for val in series.dropna().unique():
-                if str(val).strip() in common_placeholders or val in common_placeholders:
+                val_str = str(val).strip()
+                if val_str in common_placeholders or val in common_placeholders:
                     count = int((series == val).sum())
                     placeholders_found[str(val)] = count
-        
-        placeholder_str = ", ".join(f"'{k}': {v}" for k, v in placeholders_found.items()) if placeholders_found else "None"
-        
+
+        if placeholders_found:
+            placeholder_str = ", ".join(
+                f"'{k}': {v}" for k, v in placeholders_found.items()
+            )
+        else:
+            placeholder_str = "None"
+
         column_details.append([
             str(col),
             dtype,
@@ -119,5 +142,5 @@ def summary(df: pd.DataFrame) -> SummaryResult:
             unique_count,
             placeholder_str
         ])
-        
+
     return SummaryResult(general_summary, column_details)
