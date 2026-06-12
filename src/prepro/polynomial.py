@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -10,8 +10,10 @@ def polynomial(
     degree: int = 2,
     interaction_only: bool = False,
     include_bias: bool = False,
-    report: bool = False
-) -> pd.DataFrame:
+    report: bool = False,
+    fill_values: Optional[Dict[str, float]] = None,
+    return_fill_values: bool = False
+) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Dict[str, float]]]:
     """
     Generates and appends polynomial and interaction features from numeric columns.
 
@@ -30,12 +32,16 @@ def polynomial(
         If True, includes a bias column (constant term of 1).
     report : bool, default False
         If True, prints a summary of the generated features.
+    fill_values : dict, optional
+        Pre-computed dictionary of column medians to fill NaNs before polynomial feature calculation.
+    return_fill_values : bool, default False
+        If True, returns the median dictionary along with the transformed DataFrame.
 
     Returns:
     --------
-    pd.DataFrame
+    pd.DataFrame or (pd.DataFrame, dict)
         A new DataFrame with original columns and the new
-        polynomial/interaction columns.
+        polynomial/interaction columns, and optionally the fill values dictionary.
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError("Input 'df' must be a pandas DataFrame")
@@ -53,12 +59,20 @@ def polynomial(
                 )
 
     if not cols:
+        if return_fill_values:
+            return df, {}
         return df
 
     from sklearn.preprocessing import PolynomialFeatures
 
     # Fill NaNs temporarily for feature calculation to avoid errors
-    X_poly = df[cols].fillna(df[cols].median())
+    if fill_values is not None:
+        X_poly = df[cols].fillna(fill_values)
+        fill_values_calc = fill_values
+    else:
+        medians_series = df[cols].median()
+        fill_values_calc = medians_series.to_dict()
+        X_poly = df[cols].fillna(medians_series)
 
     # Generate features
     poly = PolynomialFeatures(
@@ -108,4 +122,6 @@ def polynomial(
                 print(f"  - ... and {len(new_cols_to_add) - 15} more.")
         print("=" * 60)
 
+    if return_fill_values:
+        return df, fill_values_calc
     return df

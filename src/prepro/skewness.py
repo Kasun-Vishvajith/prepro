@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union, Tuple, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -36,8 +36,10 @@ def skewness(
     skew_threshold: float = 0.5,
     normality_test: str = "shapiro",
     cols: Optional[List[str]] = None,
-    report: bool = False
-) -> pd.DataFrame:
+    report: bool = False,
+    fitted_state: Optional[Dict[str, Any]] = None,
+    return_state: bool = False
+) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Dict[str, Any]]]:
     """
     Analyzes skewness and applies mathematical transformations to correct skewness.
 
@@ -60,11 +62,15 @@ def skewness(
         Specific columns to analyze and transform. If None, uses all numeric columns.
     report : bool, default False
         If True, prints a summary table of skewness before and after transformations.
+    fitted_state : Dict[str, Any], optional
+        Pre-computed skewness parameters (shift, lambda, method).
+    return_state : bool, default False
+        If True, returns the calculated skewness state.
 
     Returns:
     --------
-    pd.DataFrame
-        A new DataFrame with transformed columns (if method is not None).
+    pd.DataFrame or (pd.DataFrame, dict)
+        A new DataFrame with transformed columns, and optionally the state.
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError("Input 'df' must be a pandas DataFrame")
@@ -73,7 +79,10 @@ def skewness(
 
     # Automatically identify numeric columns if cols is None
     if cols is None:
-        cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        if fitted_state is not None:
+            cols = list(fitted_state.keys())
+        else:
+            cols = df.select_dtypes(include=[np.number]).columns.tolist()
     else:
         for col in cols:
             if col not in df.columns:
@@ -82,81 +91,132 @@ def skewness(
                 )
 
     if not cols:
+        if return_state:
+            return df, {}
         return df
 
     method_lower = method.lower().strip() if method is not None else None
     norm_test_lower = normality_test.lower().strip()
 
     report_data = []
+    state = {}
 
-    for col in cols:
-        series = df[col]
-        orig_skew, orig_p = compute_skew_and_normality(series, norm_test_lower)
+    if fitted_state is None:
+        for col in cols:
+            series = df[col]
+            orig_skew, orig_p = compute_skew_and_normality(series, norm_test_lower)
 
-        applied_transform = "None"
-        new_skew, new_p = orig_skew, orig_p
+            applied_transform = "None"
+            new_skew, new_p = orig_skew, orig_p
 
-        # Decide whether to apply transformation
-        if method_lower is not None and abs(orig_skew) > skew_threshold:
-            selected_method = method_lower
-            if method_lower == "auto":
-                selected_method = "yeojohnson"
+            selected_method = None
+            shift = 0.0
+            lmbda = None
 
-            # Apply transformations safely
-            if selected_method == "log":
-                min_val = series.min()
-                if min_val <= 0:
-                    shift = abs(min_val) + 1.0
+            # Decide whether to apply transformation
+            if method_lower is not None and abs(orig_skew) > skew_threshold:
+                selected_method = method_lower
+                if method_lower == "auto":
+                    selected_method = "yeojohnson"
+
+                # Apply transformations safely
+                if selected_method == "log":
+                    min_val = series.min()
+                    if min_val <= 0:
+                        shift = abs(min_val) + 1.0
+                        df[col] = np.log1p(series + shift)
+                        applied_transform = f"log1p (shift={shift})"
+                    else:
+                        df[col] = np.log1p(series)
+                        applied_transform = "log1p"
+
+                elif selected_method == "sqrt":
+                    min_val = series.min()
+                    if min_val < 0:
+                        shift = abs(min_val)
+                        df[col] = np.sqrt(series + shift)
+                        applied_transform = f"sqrt (shift={shift})"
+                    else:
+                        df[col] = np.sqrt(series)
+                        applied_transform = "sqrt"
+
+                elif selected_method == "boxcox":
+                    min_val = series.min()
+                    if min_val <= 0:
+                        shift = abs(min_val) + 1.0
+                        shifted = series + shift
+                        transformed, lmbda = stats.boxcox(shifted)
+                        df[col] = transformed
+                        applied_transform = f"boxcox (shift={shift})"
+                    else:
+                        transformed, lmbda = stats.boxcox(series)
+                        df[col] = transformed
+                        applied_transform = "boxcox"
+
+                elif selected_method == "yeojohnson":
+                    transformed, lmbda = stats.yeojohnson(series)
+                    df[col] = transformed
+                    applied_transform = "yeojohnson"
+
+                else:
+                    raise ValueError(
+                        f"Unknown skewness correction method: '{method}'"
+                    )
+
+                # Recalculate skew/normality after transform
+                new_skew, new_p = compute_skew_and_normality(df[col], norm_test_lower)
+
+            state[col] = {
+                "method": selected_method,
+                "shift": shift,
+                "lmbda": lmbda,
+                "applied_transform": applied_transform
+            }
+
+            report_data.append({
+                "Column": col,
+                "Orig Skew": orig_skew,
+                "Orig Norm p-val": orig_p,
+                "Transform": applied_transform,
+                "New Skew": new_skew,
+                "New Norm p-val": new_p
+            })
+    else:
+        # Transform using pre-fitted state
+        for col in cols:
+            if col not in df.columns or col not in fitted_state:
+                continue
+            col_state = fitted_state[col]
+            selected_method = col_state["method"]
+            shift = col_state["shift"]
+            lmbda = col_state["lmbda"]
+            applied_transform = col_state["applied_transform"]
+
+            series = df[col]
+            orig_skew, orig_p = compute_skew_and_normality(series, norm_test_lower)
+            new_skew, new_p = orig_skew, orig_p
+
+            if selected_method is not None:
+                if selected_method == "log":
                     df[col] = np.log1p(series + shift)
-                    applied_transform = f"log1p (shift={shift})"
-                else:
-                    df[col] = np.log1p(series)
-                    applied_transform = "log1p"
-
-            elif selected_method == "sqrt":
-                min_val = series.min()
-                if min_val < 0:
-                    shift = abs(min_val)
+                elif selected_method == "sqrt":
                     df[col] = np.sqrt(series + shift)
-                    applied_transform = f"sqrt (shift={shift})"
-                else:
-                    df[col] = np.sqrt(series)
-                    applied_transform = "sqrt"
+                elif selected_method == "boxcox":
+                    df[col] = stats.boxcox(series + shift, lmbda=lmbda)
+                elif selected_method == "yeojohnson":
+                    df[col] = stats.yeojohnson(series, lmbda=lmbda)
 
-            elif selected_method == "boxcox":
-                min_val = series.min()
-                if min_val <= 0:
-                    shift = abs(min_val) + 1.0
-                    shifted = series + shift
-                    transformed, _ = stats.boxcox(shifted)
-                    df[col] = transformed
-                    applied_transform = f"boxcox (shift={shift})"
-                else:
-                    transformed, _ = stats.boxcox(series)
-                    df[col] = transformed
-                    applied_transform = "boxcox"
+                new_skew, new_p = compute_skew_and_normality(df[col], norm_test_lower)
 
-            elif selected_method == "yeojohnson":
-                transformed, _ = stats.yeojohnson(series)
-                df[col] = transformed
-                applied_transform = "yeojohnson"
-
-            else:
-                raise ValueError(
-                    f"Unknown skewness correction method: '{method}'"
-                )
-
-            # Recalculate skew/normality after transform
-            new_skew, new_p = compute_skew_and_normality(df[col], norm_test_lower)
-
-        report_data.append({
-            "Column": col,
-            "Orig Skew": orig_skew,
-            "Orig Norm p-val": orig_p,
-            "Transform": applied_transform,
-            "New Skew": new_skew,
-            "New Norm p-val": new_p
-        })
+            report_data.append({
+                "Column": col,
+                "Orig Skew": orig_skew,
+                "Orig Norm p-val": orig_p,
+                "Transform": applied_transform,
+                "New Skew": new_skew,
+                "New Norm p-val": new_p
+            })
+        state = fitted_state
 
     if report:
         print("=" * 75)
@@ -198,4 +258,6 @@ def skewness(
             print(fmt.format(*row))
         print("=" * 75)
 
+    if return_state:
+        return df, state
     return df

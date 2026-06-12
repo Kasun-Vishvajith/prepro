@@ -57,22 +57,24 @@ Below is the list of preprocessing steps in their exact sequence of execution:
 
 | Step | Flag Name | Parameter Dictionary | Description / Module Link |
 | :--- | :--- | :--- | :--- |
-| **1** | `run_target` | *(No config dict)* | Targets target variable encoding/transformations via [target_preprocess.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/target_preprocess.py). |
+| **1** | `run_cast` | `cast_params` | Infers and casts types, converting custom NA string placeholders via [cast.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/cast.py). |
 | **2** | `run_duplicates` | `duplicates_params` | Removes identical/redundant rows using [duplicates.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/duplicates.py). |
 | **3** | `run_drop_useless` | `drop_useless_params` | Identifies and drops constant or high-ratio ID columns using [drop_useless.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/drop_useless.py). |
-| **4** | `run_clean_strings` | `clean_strings_params` | Strips whitespace, converts case, and resolves fuzzy string typos via [clean_strings.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/clean_strings.py). |
-| **5** | `run_cast` | `cast_params` | Infers and casts types, converting custom NA string placeholders via [cast.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/cast.py). |
-| **6** | `run_extract_datetime` | `extract_datetime_params` | Automatically extracts calendar/time units or cyclical (sin/cos) features via [extract_datetime.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/extract_datetime.py). |
-| **7** | `run_missing` | `missing_params` | Imputes missing data (`mean`, `median`, `mode`, or `knn`) and performs Little's MCAR test via [missing.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/missing.py). |
-| **8** | `run_outliers` | `outliers_params` | Detects outliers (IQR/Z-score) and applies treatment (remove/winsorize) via [outliers.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/outliers.py). |
-| **9** | `run_skewness` | `skewness_params` | Automatically transforms highly skewed columns (Box-Cox, Yeo-Johnson, Log) via [skewness.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/skewness.py). |
-| **10** | `run_scale` | `scale_params` | Scales features (Standard, MinMax, Robust, MaxAbs) using [scale.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/scale.py). |
-| **11** | `run_encode` | `encode_params` | Encodes categorical variables (One-Hot, Ordinal, Target, Frequency, Binary) via [encode.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/encode.py). |
-| **12** | `run_collinearity` | `collinearity_params` | Drops or reports multicollinear variables (using VIF or correlation thresholds) via [collinearity.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/collinearity.py). |
-| **13** | `run_variance_filter` | `variance_filter_params` | Filters low-variance or quasi-constant features using [variance_filter.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/variance_filter.py). |
-| **14** | `run_balance` | `balance_params` | Addresses class imbalances (SMOTE, ADASYN, Undersampling, weights) via [balance.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/balance.py). |
-| **15** | `run_polynomial` | `polynomial_params` | Generates polynomial or interaction features via [polynomial.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/polynomial.py). |
-| **16** | `run_split` | `split_params` | Splits the processed DataFrame into train and test sets via [split_dataset.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/split_dataset.py). |
+| **4** | `run_target` | *(No config dict)* | Targets target variable encoding/transformations via [target_preprocess.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/target_preprocess.py). |
+| **5** | `run_split` | `split_params` | Splits the processed DataFrame into train and test sets, triggering the Leakage Guard for subsequent steps via [split_dataset.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/split_dataset.py). |
+| **6** | `run_clean_strings` | `clean_strings_params` | Strips whitespace, converts case, and resolves fuzzy string typos via [clean_strings.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/clean_strings.py). |
+| **7** | `run_cardinality` | `cardinality_params` | Analyzes unique value counts of categorical features to flag high cardinality via [cardinality.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/cardinality.py). |
+| **8** | `run_detect_types` | `detect_types_params` | Automatically detects and profiles logical data types of features via [detect_types.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/detect_types.py). |
+| **9** | `run_extract_datetime` | `extract_datetime_params` | Automatically extracts calendar/time units or cyclical (sin/cos) features via [extract_datetime.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/extract_datetime.py). |
+| **10** | `run_missing` | `missing_params` | Imputes missing data (`mean`, `median`, `mode`, `knn`, or `mice`) and performs Little's MCAR test via [missing.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/missing.py). |
+| **11** | `run_outliers` | `outliers_params` | Detects outliers (IQR/Z-score/Isolation Forest/LOF) and applies treatment (remove/winsorize/flag) via [outliers.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/outliers.py). |
+| **12** | `run_skewness` | `skewness_params` | Automatically transforms highly skewed columns (Box-Cox, Yeo-Johnson, Log, Sqrt, Auto) via [skewness.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/skewness.py). |
+| **13** | `run_scale` | `scale_params` | Scales features (Standard, MinMax, Robust, MaxAbs) using [scale.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/scale.py). |
+| **14** | `run_encode` | `encode_params` | Encodes categorical variables (One-Hot, Ordinal, Target, Frequency, Binary) via [encode.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/encode.py). |
+| **15** | `run_balance` | `balance_params` | Addresses class imbalances (SMOTE, ADASYN, Undersampling, weights) via [balance.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/balance.py). |
+| **16** | `run_variance_filter` | `variance_filter_params` | Filters low-variance or quasi-constant features using [variance_filter.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/variance_filter.py). |
+| **17** | `run_polynomial` | `polynomial_params` | Generates polynomial or interaction features via [polynomial.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/polynomial.py). |
+| **18** | `run_collinearity` | `collinearity_params` | Drops or reports multicollinear variables (using VIF or correlation thresholds) via [collinearity.py](file:///c:/Users/kasun/Projects/BSc%20Hons%20in%20Data%20Science/Personal%20Projects/prepro/src/prepro/collinearity.py). |
 
 ---
 
@@ -97,6 +99,15 @@ Below is the list of preprocessing steps in their exact sequence of execution:
   * `lowercase` (bool, default `True`): Lowercase all strings.
   * `fix_typos` (bool, default `False`): Use fuzzy matches to fix minor spelling variations.
   * `typo_threshold` (float, default `0.8`): Similarity threshold for fixing typos.
+
+### Cardinality Analysis (`run_cardinality=True`)
+* **`cardinality_params`**:
+  * `cols` (list of str, optional): Specific columns to analyze. Defaults to checking all columns if `None`.
+  * `high_threshold` (int, default `50`): Unique count threshold above which a categorical column is flagged as high-cardinality.
+
+### Feature Type Detection (`run_detect_types=True`)
+* **`detect_types_params`**:
+  * `report` (bool, default `True`): Prints step execution reports.
 
 ### Data Type Casting (`run_cast=True`)
 * **`cast_params`**:
@@ -168,10 +179,12 @@ Below is the list of preprocessing steps in their exact sequence of execution:
   * `include_bias` (bool, default `False`): Includes intercept bias column.
   * `cols` (list of str, optional): Numeric columns to combine.
 
-### Train-Test Splitting (`run_split=False`)
+### Train-Test Splitting & Leakage Guard (`run_split=False`)
 * **`split_params`**:
   * `train_proportion` (float, default `0.8`): Fraction of records allocated to the training split.
   * `seed` (int, default `42`): Random seed.
+* **Leakage Guard**:
+  When `run_split=True`, the dataset is split at Step 5. All subsequent transformations (Steps 6-18) are fit/derived strictly on the training partition (e.g., computing mean, median, standard deviations, custom encodings, or fitting models like LOF/Isolation Forest) and then applied to both the training and test sets. This ensures no data from the test set leaks into the preprocessing configurations or computations.
 
 ---
 

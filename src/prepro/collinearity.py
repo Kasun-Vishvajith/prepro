@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -44,8 +44,10 @@ def collinearity(
     vif_threshold: float = 5.0,
     corr_threshold: float = 0.85,
     treatment: str = "warn",
-    report: bool = False
-) -> pd.DataFrame:
+    report: bool = False,
+    cols_to_drop: Optional[List[str]] = None,
+    return_cols_to_drop: bool = False
+) -> Union[pd.DataFrame, Tuple[pd.DataFrame, List[str]]]:
     """
     Detects and treats multicollinearity using VIF and Pearson correlation.
 
@@ -65,20 +67,40 @@ def collinearity(
         - "report" : Performs analysis only.
     report : bool, default False
         If True, prints a detailed report of VIF and correlation issues.
+    cols_to_drop : list of str, optional
+        Pre-computed list of columns to drop to prevent leakage.
+    return_cols_to_drop : bool, default False
+        If True, returns the list of dropped columns.
 
     Returns:
     --------
-    pd.DataFrame
-        A new DataFrame with collinear columns treated.
+    pd.DataFrame or (pd.DataFrame, list)
+        A new DataFrame with collinear columns treated, and optionally the dropped columns list.
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError("Input 'df' must be a pandas DataFrame")
 
     df = df.copy()
 
+    if cols_to_drop is not None:
+        cleaned_df = df.drop(columns=[c for c in cols_to_drop if c in df.columns])
+        if report:
+            print("=" * 65)
+            print("                      COLLINEARITY REPORT")
+            print("=" * 65)
+            print("Using pre-fitted collinearity state.")
+            print(f"Dropped {len(cols_to_drop)} columns due to collinearity:")
+            print(f"  {', '.join(cols_to_drop) if cols_to_drop else 'None'}")
+            print("=" * 65)
+        if return_cols_to_drop:
+            return cleaned_df, cols_to_drop
+        return cleaned_df
+
     # Identify numeric columns
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     if not numeric_cols:
+        if return_cols_to_drop:
+            return df, []
         return df
 
     method_lower = method.lower().strip()
@@ -188,4 +210,6 @@ def collinearity(
                 print("\nNo collinearity warnings issued.")
         print("=" * 65)
 
+    if return_cols_to_drop:
+        return df, list(dropped_cols)
     return df

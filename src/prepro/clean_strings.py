@@ -1,5 +1,6 @@
 import difflib
-from typing import List, Optional
+from typing import List, Optional, Tuple, Union, Dict
+import difflib
 
 import pandas as pd
 
@@ -11,8 +12,10 @@ def clean_strings(
     lowercase: bool = True,
     fix_typos: bool = False,
     typo_threshold: float = 0.85,
-    report: bool = False
-) -> pd.DataFrame:
+    report: bool = False,
+    typo_maps: Optional[Dict[str, Dict[str, str]]] = None,
+    return_typo_maps: bool = False
+) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Dict[str, Dict[str, str]]]]:
     """
     Cleans string/text columns by trimming whitespace, normalizing casing,
     and optionally fixing typos/rare value variances via fuzzy string matching.
@@ -33,11 +36,15 @@ def clean_strings(
         Fuzzy matching similarity score (0.0 to 1.0) above which to merge typos.
     report : bool, default False
         If True, prints a summary report of string cleaning operations.
+    typo_maps : Dict[str, Dict[str, str]], optional
+        Pre-computed typo mapping dictionary to bypass detection.
+    return_typo_maps : bool, default False
+        If True, returns the generated typo maps as well.
 
     Returns:
     --------
-    pd.DataFrame
-        A new DataFrame with cleaned string columns.
+    pd.DataFrame or (pd.DataFrame, dict)
+        A new DataFrame with cleaned string columns, and optionally the typo maps.
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError("Input 'df' must be a pandas DataFrame")
@@ -65,6 +72,7 @@ def clean_strings(
     lowercase_counts = {col: 0 for col in cols}
     typo_merge_counts = {col: 0 for col in cols}
     typo_mappings_report = {col: [] for col in cols}
+    all_typo_maps = {}
 
     for col in cols:
         series = df[col]
@@ -95,7 +103,15 @@ def clean_strings(
             cleaned_series[non_null_mask] = lowercased[non_null_mask]
 
         # Fuzzy typo correction
-        if fix_typos:
+        if typo_maps is not None and col in typo_maps:
+            col_typo_map = typo_maps[col]
+            if col_typo_map:
+                affected_mask = cleaned_series.isin(col_typo_map.keys())
+                typo_merge_counts[col] = int(affected_mask.sum())
+                cleaned_series = cleaned_series.replace(col_typo_map)
+                for rare, freq in col_typo_map.items():
+                    typo_mappings_report[col].append((rare, freq, 1.0))
+        elif fix_typos:
             val_counts = cleaned_series.dropna().value_counts()
             if len(val_counts) > 1:
                 total_non_null = val_counts.sum()
@@ -130,6 +146,7 @@ def clean_strings(
                             )
 
                     if typo_map:
+                        all_typo_maps[col] = typo_map
                         affected_mask = cleaned_series.isin(typo_map.keys())
                         typo_merge_counts[col] = int(affected_mask.sum())
                         cleaned_series = cleaned_series.replace(typo_map)
@@ -149,7 +166,7 @@ def clean_strings(
                 print(f"  - Whitespace trimmed: {strip_counts[col]} values")
             if lowercase:
                 print(f"  - Normalized to lowercase: {lowercase_counts[col]} values")
-            if fix_typos:
+            if fix_typos or (typo_maps is not None and col in typo_maps):
                 print(f"  - Typo merges: {typo_merge_counts[col]} values")
                 if typo_mappings_report[col]:
                     print("    Merges detail:")
@@ -161,4 +178,6 @@ def clean_strings(
             print()
         print("=" * 60)
 
+    if return_typo_maps:
+        return df, all_typo_maps
     return df

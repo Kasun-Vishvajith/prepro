@@ -79,56 +79,60 @@ def test_workflow_interactive():
 
     # Mock inputs for the interactive wizard
     inputs = [
-        "target",  # target column
-        "y",
-        "",
-        "first",  # duplicates, subset (all), keep first
-        "y",
-        "0.9",
-        "0.95",  # drop useless, id thresh, const thresh
-        "y",
-        "",
-        "y",
-        "y",
-        "n",  # clean strings, cols (all), strip, lower, typos (no)
         "y",
         "n",
-        "",  # cast, manual (no), na_strings (none)
+        "",  # 1. cast, manual (no), na_strings (none)
+        "y",
+        "",
+        "first",  # 2. duplicates, subset (all), keep first
+        "y",
+        "0.9",
+        "0.95",  # 3. drop useless, id thresh, const thresh
+        "target",  # 4. target column
+        "n",  # 5. split dataset (no)
+        "y",
+        "",
+        "y",
+        "y",
+        "n",  # 6. clean strings, cols (all), strip, lower, typos (no)
+        "y",
+        "",
+        "50",  # 7. cardinality, cols (all), threshold (50)
+        "y",  # 8. feature type detection
         "y",
         "",
         "",
-        "n",  # datetime, cols (all), features (all), cyclical (no)
+        "n",  # 9. datetime, cols (all), features (all), cyclical (no)
         "y",
         "mean",
         "y",
         "y",
-        "0.5",  # missing, mean, mcar, indicator, threshold
+        "0.5",  # 10. missing, mean, mcar, indicator, threshold
         "y",
         "iqr",
         "winsorize",
         "1.5",
-        "",  # outliers, iqr, winsorize, threshold, cols
+        "",  # 11. outliers, iqr, winsorize, threshold, cols
         "y",
         "yeojohnson",
         "0.5",
-        "",  # skewness, yeojohnson, threshold, cols
+        "",  # 12. skewness, yeojohnson, threshold, cols
         "y",
         "standard",
-        "",  # scale, standard, cols
+        "",  # 13. scale, standard, cols
         "y",
         "auto",
-        "y",  # encode, auto, drop_first
+        "y",  # 14. encode, auto, drop_first
+        "n",  # 15. class balance (no)
+        "y",
+        "0.01",
+        "0.95",  # 16. variance filter, threshold, quasi threshold
+        "n",  # 17. polynomial (no)
         "y",
         "both",
         "5.0",
         "0.9",
-        "drop",  # collinearity, both, VIF, correlation, drop
-        "y",
-        "0.01",
-        "0.95",  # variance filter, threshold, quasi threshold
-        "n",  # class balance (no)
-        "n",  # polynomial (no)
-        "n",  # split dataset (no)
+        "drop",  # 18. collinearity, both, VIF, correlation, drop
     ]
 
     with patch("builtins.input", side_effect=inputs):
@@ -175,3 +179,54 @@ def test_workflow_non_interactive_split():
     assert isinstance(test_df, pd.DataFrame)
     assert len(train_df) == 8
     assert len(test_df) == 2
+
+
+def test_workflow_leakage_guard():
+    # Construct a dataset designed to check scaling and encoding leakage
+    data = {
+        "num": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0],
+        "cat": ["A", "B", "A", "B", "A", "B", "A", "B", "A", "B"],
+        "target": [1, 0, 1, 0, 1, 0, 1, 0, 1, 0]
+    }
+    df = pd.DataFrame(data)
+
+    # Let's run workflow with split
+    train_df, test_df = prepro.workflow(
+        df,
+        target_col="target",
+        UI=False,
+        run_duplicates=False,
+        run_drop_useless=False,
+        run_clean_strings=False,
+        run_cast=False,
+        run_extract_datetime=False,
+        run_missing=False,
+        run_outliers=False,
+        run_skewness=False,
+        run_scale=True,
+        scale_params={"method": "standard"},
+        run_encode=True,
+        encode_params={"method": "onehot"},
+        run_collinearity=False,
+        run_variance_filter=False,
+        run_split=True,
+        split_params={"train_proportion": 0.8, "seed": 42},
+        report=False
+    )
+
+    # Re-calculate train set original values (by tracing which indices were sampled)
+    train_indices = df.sample(frac=0.8, random_state=42).index
+    test_indices = df.index.difference(train_indices)
+
+    # Let's check scaling:
+    # Train mean and std of "num" before scaling:
+    train_num_orig = df.loc[train_indices, "num"]
+    train_mean = train_num_orig.mean()
+    train_std = train_num_orig.std(ddof=0) # StandardScaler std uses ddof=0
+
+    # Test values scaled should be (test_orig - train_mean) / train_std
+    test_num_orig = df.loc[test_indices, "num"]
+    expected_test_scaled = (test_num_orig - train_mean) / train_std
+
+    # Check scaled values in output
+    assert np.allclose(test_df["num"], expected_test_scaled)

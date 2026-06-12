@@ -150,42 +150,46 @@ def workflow(
     target_col: Optional[str] = None,
     UI: bool = True,
     # Individual step flags (if UI=False, these control which steps run)
-    run_target: bool = True,
+    run_cast: bool = True,
     run_duplicates: bool = True,
     run_drop_useless: bool = True,
+    run_target: bool = True,
+    run_split: bool = False,
     run_clean_strings: bool = True,
-    run_cast: bool = True,
+    run_cardinality: bool = True,
+    run_detect_types: bool = True,
     run_extract_datetime: bool = True,
     run_missing: bool = True,
     run_outliers: bool = True,
     run_skewness: bool = True,
     run_scale: bool = True,
     run_encode: bool = True,
-    run_collinearity: bool = True,
-    run_variance_filter: bool = True,
     run_balance: bool = False,
+    run_variance_filter: bool = True,
     run_polynomial: bool = False,
-    run_split: bool = False,
+    run_collinearity: bool = True,
     # Parameters for the steps
+    cast_params: Optional[dict] = None,
     duplicates_params: Optional[dict] = None,
     drop_useless_params: Optional[dict] = None,
+    split_params: Optional[dict] = None,
     clean_strings_params: Optional[dict] = None,
-    cast_params: Optional[dict] = None,
+    cardinality_params: Optional[dict] = None,
+    detect_types_params: Optional[dict] = None,
     extract_datetime_params: Optional[dict] = None,
     missing_params: Optional[dict] = None,
     outliers_params: Optional[dict] = None,
     skewness_params: Optional[dict] = None,
     scale_params: Optional[dict] = None,
     encode_params: Optional[dict] = None,
-    collinearity_params: Optional[dict] = None,
-    variance_filter_params: Optional[dict] = None,
     balance_params: Optional[dict] = None,
+    variance_filter_params: Optional[dict] = None,
     polynomial_params: Optional[dict] = None,
-    split_params: Optional[dict] = None,
+    collinearity_params: Optional[dict] = None,
     report: bool = True,
 ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.DataFrame]]:
     """
-    Executes a comprehensive data preprocessing workflow.
+    Executes a comprehensive data preprocessing workflow in a logical 18-step sequence.
     Can be run interactively (UI=True) or automatically with custom params.
 
     Parameters:
@@ -203,7 +207,7 @@ def workflow(
 
     df = df.copy()
 
-    # If interactive mode is enabled, prompt user for settings
+    # If interactive mode is enabled, prompt user for settings in the new 18-step order
     if UI:
         print("\n" + "=" * 80)
         print("                 PREPRO WORKFLOW INTERACTIVE WIZARD")
@@ -214,28 +218,27 @@ def workflow(
         print(summary(df))
         print("\n" + "=" * 80)
 
-        # Target variable selection
-        while True:
-            t_col = input(
-                "\nEnter the name of the target column (press Enter to skip target preprocessing): "
-            ).strip()
-            if not t_col:
-                target_col = None
-                run_target = False
-                break
-            elif t_col in df.columns:
-                target_col = t_col
-                run_target = True
-                break
-            else:
-                print(
-                    f"Column '{t_col}' not found. Available columns: {list(df.columns)}"
-                )
+        # 1. Type casting
+        run_cast = ask_bool(
+            "\nDo you want to detect and cast column data types?", True
+        )
+        if run_cast:
+            manual_cast = ask_bool(
+                "  Do you want to specify a manual casting map?", False
+            )
+            cast_map = None
+            if manual_cast:
+                cast_map = ask_cast_map(list(df.columns))
+            na_strs = ask_list(
+                "  String placeholders to replace with NA (e.g. ?,N/A)"
+            )
+            cast_params = {
+                "cast_map": cast_map,
+                "na_strings": na_strs,
+                "report": report,
+            }
 
-        if run_target:
-            print(f"Selected target column: '{target_col}'")
-
-        # Deduplication
+        # 2. Deduplication
         run_duplicates = ask_bool(
             "\nDo you want to check for and remove duplicate rows?", True
         )
@@ -254,7 +257,7 @@ def workflow(
                 "report": report,
             }
 
-        # Drop useless
+        # 3. Drop useless
         run_drop_useless = ask_bool(
             "\nDo you want to identify and drop useless columns (constant/ID columns)?",
             True,
@@ -279,7 +282,42 @@ def workflow(
                 "report": report,
             }
 
-        # Clean strings
+        # 4. Target variable selection
+        while True:
+            t_col = input(
+                "\nEnter the name of the target column (press Enter to skip target preprocessing): "
+            ).strip()
+            if not t_col:
+                target_col = None
+                run_target = False
+                break
+            elif t_col in df.columns:
+                target_col = t_col
+                run_target = True
+                break
+            else:
+                print(
+                    f"Column '{t_col}' not found. Available columns: {list(df.columns)}"
+                )
+
+        if run_target:
+            print(f"Selected target column: '{target_col}'")
+
+        # 5. Split Dataset
+        run_split = ask_bool(
+            "\nDo you want to split the dataset into train and test sets?", False
+        )
+        if run_split:
+            s_prop = ask_float(
+                "  Train split proportion (0.0 to 1.0)",
+                0.8,
+                0.0001,
+                0.9999,
+            )
+            s_seed = ask_int("  Random seed for splitting", 42)
+            split_params = {"train_proportion": s_prop, "seed": s_seed}
+
+        # 6. Clean strings
         run_clean_strings = ask_bool(
             "\nDo you want to clean string/object columns (strip, lowercase, fix typos)?",
             True,
@@ -306,27 +344,29 @@ def workflow(
                 "report": report,
             }
 
-        # Type casting
-        run_cast = ask_bool(
-            "\nDo you want to detect and cast column data types?", True
+        # 7. Cardinality Analysis
+        run_cardinality = ask_bool(
+            "\nDo you want to run cardinality analysis?", True
         )
-        if run_cast:
-            manual_cast = ask_bool(
-                "  Do you want to specify a manual casting map?", False
-            )
-            cast_map = None
-            if manual_cast:
-                cast_map = ask_cast_map(list(df.columns))
-            na_strs = ask_list(
-                "  String placeholders to replace with NA (e.g. ?,N/A)"
-            )
-            cast_params = {
-                "cast_map": cast_map,
-                "na_strings": na_strs,
+        if run_cardinality:
+            card_cols = ask_list("  Specific columns to analyze for cardinality")
+            card_thresh = ask_int("  High cardinality threshold", 50)
+            cardinality_params = {
+                "cols": card_cols,
+                "high_threshold": card_thresh,
                 "report": report,
             }
 
-        # Datetime extraction
+        # 8. Feature Type Detection
+        run_detect_types = ask_bool(
+            "\nDo you want to run feature type detection?", True
+        )
+        if run_detect_types:
+            detect_types_params = {
+                "report": report,
+            }
+
+        # 9. Datetime extraction
         run_extract_datetime = ask_bool(
             "\nDo you want to extract features from datetime columns?", True
         )
@@ -345,14 +385,14 @@ def workflow(
                 "report": report,
             }
 
-        # Missing Value Imputation
+        # 10. Missing Value Imputation
         run_missing = ask_bool(
             "\nDo you want to handle and impute missing values?", True
         )
         if run_missing:
             m_strat = ask_choice(
                 "  Imputation strategy",
-                ["mean", "median", "mode", "knn"],
+                ["mean", "median", "mode", "knn", "mice"],
                 "mean",
             )
             m_mcar = ask_bool("  Run Little's MCAR test?", True)
@@ -371,17 +411,17 @@ def workflow(
                 "report": report,
             }
 
-        # Outliers
+        # 11. Outliers
         run_outliers = ask_bool(
             "\nDo you want to detect and treat outliers?", True
         )
         if run_outliers:
             out_method = ask_choice(
-                "  Outlier detection method", ["iqr", "zscore"], "iqr"
+                "  Outlier detection method", ["iqr", "zscore", "modified_zscore", "isolation_forest", "lof"], "iqr"
             )
             out_treat = ask_choice(
                 "  Outlier treatment method",
-                ["winsorize", "remove", "none"],
+                ["winsorize", "remove", "flag", "none"],
                 "winsorize",
             )
             if out_treat == "none":
@@ -396,14 +436,14 @@ def workflow(
                 "report": report,
             }
 
-        # Skewness
+        # 12. Skewness
         run_skewness = ask_bool(
             "\nDo you want to transform skewed numeric columns?", True
         )
         if run_skewness:
             skew_method = ask_choice(
                 "  Transformation method",
-                ["yeojohnson", "boxcox", "log"],
+                ["yeojohnson", "boxcox", "log", "sqrt", "auto"],
                 "yeojohnson",
             )
             skew_t = ask_float("  Skewness threshold for transformation", 0.5, 0.0)
@@ -415,7 +455,7 @@ def workflow(
                 "report": report,
             }
 
-        # Scale
+        # 13. Scale
         run_scale = ask_bool(
             "\nDo you want to scale numeric features?", True
         )
@@ -432,7 +472,7 @@ def workflow(
                 "report": report,
             }
 
-        # Encode
+        # 14. Encode
         run_encode = ask_bool(
             "\nDo you want to encode categorical columns?", True
         )
@@ -453,47 +493,7 @@ def workflow(
                 "report": report,
             }
 
-        # Collinearity
-        run_collinearity = ask_bool(
-            "\nDo you want to handle collinearity (highly correlated features)?", True
-        )
-        if run_collinearity:
-            coll_method = ask_choice(
-                "  Collinearity detection method",
-                ["vif", "correlation", "both"],
-                "both",
-            )
-            coll_vif = ask_float("  VIF threshold", 5.0, 1.0)
-            coll_corr = ask_float(
-                "  Correlation threshold (0.0 to 1.0)", 0.9, 0.0, 1.0
-            )
-            coll_treat = ask_choice(
-                "  Collinearity treatment", ["drop", "report_only"], "drop"
-            )
-            collinearity_params = {
-                "method": coll_method,
-                "vif_threshold": coll_vif,
-                "corr_threshold": coll_corr,
-                "treatment": coll_treat,
-                "report": report,
-            }
-
-        # Variance Filter
-        run_variance_filter = ask_bool(
-            "\nDo you want to filter out low-variance features?", True
-        )
-        if run_variance_filter:
-            vf_t = ask_float("  Variance threshold", 0.01, 0.0)
-            vf_quasi = ask_float(
-                "  Quasi-constant threshold (0.0 to 1.0)", 0.95, 0.0, 1.0
-            )
-            variance_filter_params = {
-                "threshold": vf_t,
-                "quasi_threshold": vf_quasi,
-                "report": report,
-            }
-
-        # Class Balance
+        # 15. Class Balance
         if target_col is not None:
             run_balance = ask_bool(
                 "\nDo you want to handle class imbalance on the target?", False
@@ -520,7 +520,22 @@ def workflow(
         else:
             run_balance = False
 
-        # Polynomial Features
+        # 16. Variance Filter
+        run_variance_filter = ask_bool(
+            "\nDo you want to filter out low-variance features?", True
+        )
+        if run_variance_filter:
+            vf_t = ask_float("  Variance threshold", 0.01, 0.0)
+            vf_quasi = ask_float(
+                "  Quasi-constant threshold (0.0 to 1.0)", 0.95, 0.0, 1.0
+            )
+            variance_filter_params = {
+                "threshold": vf_t,
+                "quasi_threshold": vf_quasi,
+                "report": report,
+            }
+
+        # 17. Polynomial Features
         run_polynomial = ask_bool(
             "\nDo you want to generate polynomial features?", False
         )
@@ -537,60 +552,68 @@ def workflow(
                 "report": report,
             }
 
-        # Split Dataset
-        run_split = ask_bool(
-            "\nDo you want to split the dataset into train and test sets?", False
+        # 18. Collinearity
+        run_collinearity = ask_bool(
+            "\nDo you want to handle collinearity (highly correlated features)?", True
         )
-        if run_split:
-            s_prop = ask_float(
-                "  Train split proportion (0.0 to 1.0)",
-                0.8,
-                0.0001,
-                0.9999,
+        if run_collinearity:
+            coll_method = ask_choice(
+                "  Collinearity detection method",
+                ["vif", "correlation", "both"],
+                "both",
             )
-            s_seed = ask_int("  Random seed for splitting", 42)
-            split_params = {"train_proportion": s_prop, "seed": s_seed}
+            coll_vif = ask_float("  VIF threshold", 5.0, 1.0)
+            coll_corr = ask_float(
+                "  Correlation threshold (0.0 to 1.0)", 0.9, 0.0, 1.0
+            )
+            coll_treat = ask_choice(
+                "  Collinearity treatment", ["drop", "warn", "report"], "drop"
+            )
+            collinearity_params = {
+                "method": coll_method,
+                "vif_threshold": coll_vif,
+                "corr_threshold": coll_corr,
+                "treatment": coll_treat,
+                "report": report,
+            }
 
         print("\n" + "=" * 80)
         print("                 STARTING PIPELINE EXECUTION")
         print("=" * 80 + "\n")
 
     # Initialize default param dicts if None
+    cast_params = cast_params if cast_params is not None else {}
     duplicates_params = duplicates_params if duplicates_params is not None else {}
     drop_useless_params = drop_useless_params if drop_useless_params is not None else {}
-    clean_strings_params = (
-        clean_strings_params if clean_strings_params is not None else {}
-    )
-    cast_params = cast_params if cast_params is not None else {}
-    extract_datetime_params = (
-        extract_datetime_params if extract_datetime_params is not None else {}
-    )
+    split_params = split_params if split_params is not None else {}
+    clean_strings_params = clean_strings_params if clean_strings_params is not None else {}
+    cardinality_params = cardinality_params if cardinality_params is not None else {}
+    detect_types_params = detect_types_params if detect_types_params is not None else {}
+    extract_datetime_params = extract_datetime_params if extract_datetime_params is not None else {}
     missing_params = missing_params if missing_params is not None else {}
     outliers_params = outliers_params if outliers_params is not None else {}
     skewness_params = skewness_params if skewness_params is not None else {}
     scale_params = scale_params if scale_params is not None else {}
     encode_params = encode_params if encode_params is not None else {}
-    collinearity_params = (
-        collinearity_params if collinearity_params is not None else {}
-    )
-    variance_filter_params = (
-        variance_filter_params if variance_filter_params is not None else {}
-    )
     balance_params = balance_params if balance_params is not None else {}
+    variance_filter_params = variance_filter_params if variance_filter_params is not None else {}
     polynomial_params = polynomial_params if polynomial_params is not None else {}
-    split_params = split_params if split_params is not None else {}
+    collinearity_params = collinearity_params if collinearity_params is not None else {}
 
-    # Sequential execution of preprocessing steps
-    # 1. Target preprocessing
-    if run_target and target_col is not None:
+    # Sequential execution of preprocessing steps (1-18)
+    
+    # 1. Type casting
+    if run_cast:
         if report:
-            print(">>> Step: Preprocessing target variable...")
-        df = target(df, target_col)
+            print(">>> Step 1: Casting column data types...")
+        params = {"report": report}
+        params.update(cast_params)
+        df = cast(df, **params)
 
     # 2. Deduplication
     if run_duplicates:
         if report:
-            print(">>> Step: Removing duplicate rows...")
+            print(">>> Step 2: Removing duplicate rows...")
         params = {"report": report}
         params.update(duplicates_params)
         df = duplicates(df, **params)
@@ -598,115 +621,22 @@ def workflow(
     # 3. Drop useless
     if run_drop_useless:
         if report:
-            print(">>> Step: Dropping useless columns...")
+            print(">>> Step 3: Dropping useless columns...")
         params = {"report": report}
         params.update(drop_useless_params)
         df = drop_useless(df, **params)
 
-    # 4. Clean strings
-    if run_clean_strings:
+    # 4. Target preprocessing
+    if run_target and target_col is not None:
         if report:
-            print(">>> Step: Cleaning string columns...")
-        params = {"report": report}
-        params.update(clean_strings_params)
-        df = clean_strings(df, **params)
+            print(">>> Step 4: Preprocessing target variable...")
+        df = target(df, target_col)
 
-    # 5. Type casting
-    if run_cast:
-        if report:
-            print(">>> Step: Casting column data types...")
-        params = {"report": report}
-        params.update(cast_params)
-        df = cast(df, **params)
-
-    # 6. Datetime extraction
-    if run_extract_datetime:
-        if report:
-            print(">>> Step: Extracting datetime features...")
-        params = {"report": report}
-        params.update(extract_datetime_params)
-        df = extract_datetime(df, **params)
-
-    # 7. Missing value imputation
-    if run_missing:
-        if report:
-            print(">>> Step: Imputing missing values...")
-        params = {"report": report}
-        params.update(missing_params)
-        df = missing(df, **params)
-
-    # 8. Outliers
-    if run_outliers:
-        if report:
-            print(">>> Step: Handling outliers...")
-        params = {"report": report}
-        params.update(outliers_params)
-        df = outliers(df, **params)
-
-    # 9. Skewness
-    if run_skewness:
-        if report:
-            print(">>> Step: Adjusting skewness...")
-        params = {"report": report}
-        params.update(skewness_params)
-        df = skewness(df, **params)
-
-    # 10. Scaling
-    if run_scale:
-        if report:
-            print(">>> Step: Scaling numeric features...")
-        params = {"report": report}
-        params.update(scale_params)
-        df = scale(df, **params)
-
-    # 11. Categorical encoding
-    if run_encode:
-        if report:
-            print(">>> Step: Encoding categorical columns...")
-        params = {"report": report}
-        if target_col is not None and "target_col" not in encode_params:
-            params["target_col"] = target_col
-        params.update(encode_params)
-        df = encode(df, **params)
-
-    # 12. Collinearity
-    if run_collinearity:
-        if report:
-            print(">>> Step: Handling collinear features...")
-        params = {"report": report}
-        params.update(collinearity_params)
-        df = collinearity(df, **params)
-
-    # 13. Variance filtering
-    if run_variance_filter:
-        if report:
-            print(">>> Step: Applying variance filter...")
-        params = {"report": report}
-        params.update(variance_filter_params)
-        df = variance_filter(df, **params)
-
-    # 14. Class balance
-    if run_balance and target_col is not None:
-        if report:
-            print(">>> Step: Handling class imbalance...")
-        params = {"report": report}
-        if "target" not in balance_params:
-            params["target"] = target_col
-        params.update(balance_params)
-        df = balance(df, **params)
-
-    # 15. Polynomial features
-    if run_polynomial:
-        if report:
-            print(">>> Step: Generating polynomial features...")
-        params = {"report": report}
-        params.update(polynomial_params)
-        df = polynomial(df, **params)
-
-    # 16. Split dataset
+    # 5. Train/test split + leakage guard Setup
+    run_split_active = run_split
     if run_split:
         if report:
-            print(">>> Step: Splitting dataset...")
+            print(">>> Step 5: Splitting dataset (Leakage Guard Active)...")
         params = {}
         params.update(split_params)
         if "train_proportion" not in params:
@@ -714,11 +644,223 @@ def workflow(
         train_df, test_df = split(df, **params)
         if report:
             print(
+                f"    Split completed. Train shape: {train_df.shape}, Test shape: {test_df.shape}"
+            )
+    else:
+        train_df = df
+        test_df = None
+
+    # 6. Clean strings
+    if run_clean_strings:
+        if report:
+            print(">>> Step 6: Cleaning string columns...")
+        params = {"report": report}
+        params.update(clean_strings_params)
+        if test_df is not None:
+            if clean_strings_params.get("fix_typos", False):
+                train_df, typo_maps = clean_strings(train_df, return_typo_maps=True, **params)
+                test_params = params.copy()
+                test_params["fix_typos"] = False
+                test_params["report"] = False
+                test_df = clean_strings(test_df, typo_maps=typo_maps, **test_params)
+            else:
+                train_df = clean_strings(train_df, **params)
+                test_params = params.copy()
+                test_params["report"] = False
+                test_df = clean_strings(test_df, **test_params)
+        else:
+            train_df = clean_strings(train_df, **params)
+
+    # 7. Cardinality analysis
+    if run_cardinality:
+        if report:
+            print(">>> Step 7: Running cardinality analysis...")
+        params = {"report": report}
+        params.update(cardinality_params)
+        if test_df is not None:
+            cardinality(train_df, **params)
+        else:
+            cardinality(train_df, **params)
+
+    # 8. Feature type detection
+    if run_detect_types:
+        if report:
+            print(">>> Step 8: Running feature type detection...")
+        params = {"report": report}
+        params.update(detect_types_params)
+        if test_df is not None:
+            detect_types(train_df, **params)
+        else:
+            detect_types(train_df, **params)
+
+    # 9. Datetime extraction
+    if run_extract_datetime:
+        if report:
+            print(">>> Step 9: Extracting datetime features...")
+        params = {"report": report}
+        params.update(extract_datetime_params)
+        if test_df is not None:
+            if params.get("cols") is None:
+                dtypes = detect_types(train_df)
+                dt_cols = [col for col, t in dtypes.items() if t == "datetime"]
+                params_with_cols = params.copy()
+                params_with_cols["cols"] = dt_cols
+            else:
+                params_with_cols = params
+            train_df = extract_datetime(train_df, **params_with_cols)
+            test_params = params_with_cols.copy()
+            test_params["report"] = False
+            test_df = extract_datetime(test_df, **test_params)
+        else:
+            train_df = extract_datetime(train_df, **params)
+
+    # 10. Missing value analysis & imputation
+    if run_missing:
+        if report:
+            print(">>> Step 10: Imputing missing values...")
+        params = {"report": report}
+        params.update(missing_params)
+        if test_df is not None:
+            train_df, missing_state = missing(train_df, return_state=True, **params)
+            test_params = params.copy()
+            test_params["report"] = False
+            test_df = missing(test_df, fitted_state=missing_state, **test_params)
+        else:
+            train_df = missing(train_df, **params)
+
+    # 11. Outlier detection & treatment
+    if run_outliers:
+        if report:
+            print(">>> Step 11: Handling outliers...")
+        params = {"report": report}
+        params.update(outliers_params)
+        if test_df is not None:
+            train_df, outlier_state = outliers(train_df, return_state=True, **params)
+            test_params = params.copy()
+            test_params["report"] = False
+            test_df = outliers(test_df, fitted_state=outlier_state, **test_params)
+        else:
+            train_df = outliers(train_df, **params)
+
+    # 12. Skewness & distribution correction
+    if run_skewness:
+        if report:
+            print(">>> Step 12: Adjusting skewness...")
+        params = {"report": report}
+        params.update(skewness_params)
+        if test_df is not None:
+            train_df, skew_state = skewness(train_df, return_state=True, **params)
+            test_params = params.copy()
+            test_params["report"] = False
+            test_df = skewness(test_df, fitted_state=skew_state, **test_params)
+        else:
+            train_df = skewness(train_df, **params)
+
+    # 13. Feature scaling & normalization
+    if run_scale:
+        if report:
+            print(">>> Step 13: Scaling numeric features...")
+        params = {"report": report}
+        params.update(scale_params)
+        if test_df is not None:
+            train_df, fitted_scaler = scale(train_df, return_scaler=True, **params)
+            test_params = params.copy()
+            test_params["report"] = False
+            test_df = scale(test_df, fitted_scaler=fitted_scaler, **test_params)
+        else:
+            train_df = scale(train_df, **params)
+
+    # 14. Encoding
+    if run_encode:
+        if report:
+            print(">>> Step 14: Encoding categorical columns...")
+        params = {"report": report}
+        if target_col is not None and "target_col" not in encode_params:
+            params["target_col"] = target_col
+        params.update(encode_params)
+        if test_df is not None:
+            train_df, encode_state = encode(train_df, return_state=True, **params)
+            test_params = params.copy()
+            test_params["report"] = False
+            test_df = encode(test_df, fitted_state=encode_state, **test_params)
+        else:
+            train_df = encode(train_df, **params)
+
+    # 15. Class imbalance handling
+    if run_balance and target_col is not None:
+        if report:
+            print(">>> Step 15: Handling class imbalance...")
+        params = {"report": report}
+        if "target" not in balance_params:
+            params["target"] = target_col
+        params.update(balance_params)
+        if test_df is not None:
+            method = params.get("method", "smote").lower().strip()
+            if method == "weights":
+                class_counts = train_df[target_col].value_counts()
+                total = len(train_df)
+                n_classes = len(class_counts)
+                class_weights = {
+                    cls: total / (n_classes * count)
+                    for cls, count in class_counts.items()
+                }
+                train_df["sample_weight"] = train_df[target_col].map(class_weights)
+                test_df["sample_weight"] = test_df[target_col].map(class_weights).fillna(1.0)
+            else:
+                train_df = balance(train_df, **params)
+        else:
+            train_df = balance(train_df, **params)
+
+    # 16. Variance filtering
+    if run_variance_filter:
+        if report:
+            print(">>> Step 16: Applying variance filter...")
+        params = {"report": report}
+        params.update(variance_filter_params)
+        if test_df is not None:
+            train_df, cols_to_drop = variance_filter(train_df, return_cols_to_drop=True, **params)
+            test_params = params.copy()
+            test_params["report"] = False
+            test_df = variance_filter(test_df, cols_to_drop=cols_to_drop, **test_params)
+        else:
+            train_df = variance_filter(train_df, **params)
+
+    # 17. Polynomial / interaction terms
+    if run_polynomial:
+        if report:
+            print(">>> Step 17: Generating polynomial features...")
+        params = {"report": report}
+        params.update(polynomial_params)
+        if test_df is not None:
+            train_df, fill_values = polynomial(train_df, return_fill_values=True, **params)
+            test_params = params.copy()
+            test_params["report"] = False
+            test_df = polynomial(test_df, fill_values=fill_values, **test_params)
+        else:
+            train_df = polynomial(train_df, **params)
+
+    # 18. Multicollinearity detection
+    if run_collinearity:
+        if report:
+            print(">>> Step 18: Handling collinear features...")
+        params = {"report": report}
+        params.update(collinearity_params)
+        if test_df is not None:
+            train_df, cols_to_drop = collinearity(train_df, return_cols_to_drop=True, **params)
+            test_params = params.copy()
+            test_params["report"] = False
+            test_df = collinearity(test_df, cols_to_drop=cols_to_drop, **test_params)
+        else:
+            train_df = collinearity(train_df, **params)
+
+    if run_split_active:
+        if report:
+            print(
                 f"\nWorkflow complete. Data split into Train: {train_df.shape} and Test: {test_df.shape}"
             )
         return train_df, test_df
 
     if report:
-        print(f"\nWorkflow complete. Cleaned DataFrame shape: {df.shape}")
+        print(f"\nWorkflow complete. Cleaned DataFrame shape: {train_df.shape}")
 
-    return df
+    return train_df

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union, Tuple, Any
 
 import numpy as np
 import pandas as pd
@@ -8,8 +8,10 @@ def scale(
     df: pd.DataFrame,
     method: str = "standard",
     cols: Optional[List[str]] = None,
-    report: bool = False
-) -> pd.DataFrame:
+    report: bool = False,
+    fitted_scaler: Optional[Any] = None,
+    return_scaler: bool = False
+) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Any]]:
     """
     Scales and normalizes numeric columns using scikit-learn preprocessing.
 
@@ -27,11 +29,15 @@ def scale(
         Specific columns to scale. If None, scales all numeric columns.
     report : bool, default False
         If True, prints a summary table showing stats before and after scaling.
+    fitted_scaler : Any, optional
+        Pre-fitted scikit-learn scaler object.
+    return_scaler : bool, default False
+        If True, returns the trained scaler object along with the scaled DataFrame.
 
     Returns:
     --------
-    pd.DataFrame
-        A new DataFrame with scaled numeric columns.
+    pd.DataFrame or (pd.DataFrame, Any)
+        A new DataFrame with scaled numeric columns, and optionally the scaler.
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError("Input 'df' must be a pandas DataFrame")
@@ -40,7 +46,11 @@ def scale(
 
     # Automatically identify numeric columns if cols is None
     if cols is None:
-        cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        if fitted_scaler is not None:
+            # Use columns that the pre-fitted scaler expects (if available) or numeric
+            cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        else:
+            cols = df.select_dtypes(include=[np.number]).columns.tolist()
     else:
         for col in cols:
             if col not in df.columns:
@@ -49,6 +59,8 @@ def scale(
                 )
 
     if not cols:
+        if return_scaler:
+            return df, None
         return df
 
     method_lower = method.lower().strip()
@@ -64,24 +76,29 @@ def scale(
             "max": df[col].max()
         }
 
-    # Initialize correct scaler
-    if method_lower == "standard":
-        from sklearn.preprocessing import StandardScaler
-        scaler = StandardScaler()
-    elif method_lower == "minmax":
-        from sklearn.preprocessing import MinMaxScaler
-        scaler = MinMaxScaler()
-    elif method_lower == "robust":
-        from sklearn.preprocessing import RobustScaler
-        scaler = RobustScaler()
-    elif method_lower == "maxabs":
-        from sklearn.preprocessing import MaxAbsScaler
-        scaler = MaxAbsScaler()
-    else:
-        raise ValueError(f"Unknown scaling method: '{method}'")
-
     # Fit and transform columns
-    scaled_values = scaler.fit_transform(df[cols].astype(float))
+    if fitted_scaler is not None:
+        scaler = fitted_scaler
+        scaled_values = scaler.transform(df[cols].astype(float))
+    else:
+        # Initialize correct scaler
+        if method_lower == "standard":
+            from sklearn.preprocessing import StandardScaler
+            scaler = StandardScaler()
+        elif method_lower == "minmax":
+            from sklearn.preprocessing import MinMaxScaler
+            scaler = MinMaxScaler()
+        elif method_lower == "robust":
+            from sklearn.preprocessing import RobustScaler
+            scaler = RobustScaler()
+        elif method_lower == "maxabs":
+            from sklearn.preprocessing import MaxAbsScaler
+            scaler = MaxAbsScaler()
+        else:
+            raise ValueError(f"Unknown scaling method: '{method}'")
+
+        scaled_values = scaler.fit_transform(df[cols].astype(float))
+
     df[cols] = scaled_values
 
     # Store statistics after scaling
@@ -123,4 +140,6 @@ def scale(
             print(fmt.format(*row))
         print("=" * 80)
 
+    if return_scaler:
+        return df, scaler
     return df
