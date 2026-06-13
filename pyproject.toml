@@ -5,45 +5,36 @@ build-backend = "hatchling.build"
 [project]
 name = "prepro"
 dynamic = ["version"]
-description = "A Python library for data preprocessing."
+description = "A preprocessing library for data science workflows"
 readme = "README.md"
 requires-python = ">=3.8"
-license = { text = "MIT" }
+license = {text = "MIT"}
+keywords = ["preprocessing", "data-science", "data-cleaning"]
 authors = [
-    { name = "Kasun Vishvajith", email = "kasun@example.com" }
+  {name = "Kasun Vishvajith", email = "kasun@example.com"}
 ]
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "pandas>=1.0",
-    "scipy>=1.5",
-    "scikit-learn>=0.24",
-    "imbalanced-learn>=0.8",
+    "pandas>=1.0.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "ruff>=0.1",
-]
+[project.urls]
+Homepage = "https://github.com/Kasun-Vishvajith/prepro"
+Issues = "https://github.com/Kasun-Vishvajith/prepro/issues"
 
 [tool.hatch.version]
 path = "src/prepro/__init__.py"
 
-[tool.pytest.ini_options]
-minversion = "6.0"
-addopts = "-ra -q"
-testpaths = [
-    "tests",
-]
-
-[tool.ruff]
-line-length = 88
-target-version = "py38"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "W"]
-ignore = []
+[tool.hatch.build.targets.wheel]
+packages = ["src/prepro"]

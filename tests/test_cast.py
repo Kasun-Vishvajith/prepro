@@ -1,150 +1,130 @@
-import pandas as pd
 import pytest
+import pandas as pd
+import numpy as np
+import prepro
 
-from prepro import cast
-
-
-def test_cast_explicit_mapping():
-    data = {
-        "col_int": ["1", "2", None, "4"],
-        "col_float": ["1.1", "2.2", "3.3", None],
-        "col_str": [10, 20, 30, 40],
-        "col_bool": ["True", "false", "yes", "no"],
-        "col_date": ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"],
-        "col_cat": ["a", "b", "a", "b"]
-    }
-    df = pd.DataFrame(data)
-
-    cast_map = {
-        "col_int": "int",
-        "col_float": "float",
-        "col_str": "str",
-        "col_bool": "bool",
-        "col_date": "datetime",
-        "col_cat": "category"
-    }
-
-    res = cast(df, cast_map=cast_map)
-
-    # Check dtypes
-    assert str(res["col_int"].dtype) == "Int64"
-    assert str(res["col_float"].dtype) == "Float64"
-    assert str(res["col_str"].dtype) == "string"
-    assert str(res["col_bool"].dtype) == "boolean"
-    assert "datetime64" in str(res["col_date"].dtype)
-    assert str(res["col_cat"].dtype) == "category"
-
-    # Check values
-    assert res["col_int"].iloc[0] == 1
-    assert pd.isna(res["col_int"].iloc[2])
-    assert res["col_float"].iloc[0] == 1.1
-    assert res["col_str"].iloc[0] == "10"
-    assert res["col_bool"].iloc[0] == True  # noqa: E712
-    assert res["col_bool"].iloc[1] == False  # noqa: E712
-    assert res["col_bool"].iloc[2] == True  # noqa: E712
-    assert res["col_bool"].iloc[3] == False  # noqa: E712
-    assert res["col_date"].iloc[0] == pd.Timestamp("2026-01-01")
-
-
-def test_cast_auto_inference():
-    data = {
-        "col_int": ["10", "20", "30", None],
-        "col_float": ["1.5", "2.5", None, "4.5"],
-        "col_bool": ["yes", "no", "yes", "no"],
-        "col_date": ["2026/06/11", "2026/06/12", "2026/06/13", "2026/06/14"],
-        "col_mixed": ["1", "abc", "2", "def"]
-    }
-    df = pd.DataFrame(data)
-
-    res = cast(df)
-
-    # Check inferred types
-    assert str(res["col_int"].dtype) == "Int64"
-    assert str(res["col_float"].dtype) == "Float64"
-    assert str(res["col_bool"].dtype) == "boolean"
-    assert "datetime64" in str(res["col_date"].dtype)
-    # converted from object by convert_dtypes
-    assert str(res["col_mixed"].dtype) == "string"
-
-
-def test_cast_na_strings():
-    data = {
-        "col_int": ["1", "?", "3", "N/A"],
-        "col_float": ["1.1", "none", "3.3", " "],
-        "col_cat": ["a", "b", "N/A", "a"]
-    }
-    df = pd.DataFrame(data)
-    df["col_cat"] = df["col_cat"].astype("category")
-
-    cast_map = {
-        "col_int": "int",
-        "col_float": "float",
-        "col_cat": "category"
-    }
-
-    # Custom na_strings replacement
-    res = cast(
-        df,
-        cast_map=cast_map,
-        na_strings=["?", "N/A", "none", " "],
-        report=False
-    )
-
-    # Check if they cast correctly without error
-    # since placeholders are replaced by pd.NA
-    assert str(res["col_int"].dtype) == "Int64"
-    assert str(res["col_float"].dtype) == "Float64"
-    assert str(res["col_cat"].dtype) == "category"
-
-    assert pd.isna(res["col_int"].iloc[1])
-    assert pd.isna(res["col_int"].iloc[3])
-    assert pd.isna(res["col_float"].iloc[1])
-    assert pd.isna(res["col_float"].iloc[3])
-    assert pd.isna(res["col_cat"].iloc[2])
-
-
-def test_cast_report(capsys):
-    data = {
-        "col_int": ["1", "?", "3", "4"],
-        "col_float": ["1.1", "2.2", "3.3", "4.4"],
-    }
-    df = pd.DataFrame(data)
-
-    cast(
-        df,
-        cast_map={"col_int": "int", "col_float": "float"},
-        na_strings=["?"],
-        report=True
-    )
-
-    captured = capsys.readouterr()
-    assert "CASTING REPORT" in captured.out
-    assert "col_int" in captured.out
-    assert "col_float" in captured.out
-    assert "Original Dtype" in captured.out
-    assert "New Dtype" in captured.out
-    assert "NA Replaced" in captured.out
-    # col_int has 1 NA replaced, col_float has 0
-    assert "1" in captured.out
-    assert "0" in captured.out
-
-
-def test_cast_invalid_inputs():
-    # Invalid DataFrame input
+def test_cast_requires_dataframe():
     with pytest.raises(TypeError):
-        cast([1, 2, 3])
+        prepro.cast("not a dataframe", dtypes={"col": "Int64"})
 
-    df = pd.DataFrame({"A": [1, 2]})
+def test_cast_basic_and_nullable():
+    # Simple real example mimicking user description
+    data = {
+        "customer_id": ["C001", "C002", "C003"],
+        "age": ["25", "31", "28"],
+        "income": ["45000", "?", "62000"],
+        "employment_type": ["full-time", "part-time", "full-time"],
+        "default": [0, 1, 0]
+    }
+    df = pd.DataFrame(data)
+    
+    # Cast
+    casted_df = prepro.cast(
+        df,
+        dtypes={
+            "age": "Int64",
+            "income": "Float64",
+            "employment_type": "category",
+            "default": "boolean",
+        }
+    )
+    
+    # Assert dtypes
+    assert casted_df["age"].dtype == "Int64"
+    assert casted_df["income"].dtype == "Float64"
+    assert casted_df["employment_type"].dtype == "category"
+    assert casted_df["default"].dtype == "boolean"
+    
+    # Assert missing value mapped properly
+    assert pd.isna(casted_df.loc[1, "income"])
+    
+    # Original must not be mutated
+    assert df["income"].iloc[1] == "?"
+    assert df["age"].dtype != "Int64"
 
-    # Non-existent column in cast_map
-    with pytest.raises(ValueError):
-        cast(df, cast_map={"B": "int"})
+def test_cast_banking_missing_values():
+    data = {
+        "customer_id": ["C001", "C002", "C003", "C004"],
+        "income": ["45000", "999", "9999", "62000"],
+        "loan_type": ["personal", "N/A", "mortgage", "-"]
+    }
+    df = pd.DataFrame(data)
+    
+    casted_df = prepro.cast(
+        df,
+        dtypes={
+            "income": "Float64",
+            "loan_type": "category"
+        },
+        na_values=["?", "N/A", "-", "999", "9999"]
+    )
+    
+    # "999" and "9999" in income should be converted to NaN
+    assert pd.isna(casted_df.loc[1, "income"])
+    assert pd.isna(casted_df.loc[2, "income"])
+    assert casted_df.loc[0, "income"] == 45000.0
+    
+    # "N/A" and "-" in loan_type should be converted to NaN
+    assert pd.isna(casted_df.loc[1, "loan_type"])
+    assert pd.isna(casted_df.loc[3, "loan_type"])
 
-    # Invalid cast target type that pandas astype cannot handle
-    with pytest.raises((ValueError, TypeError)):
-        cast(df, cast_map={"A": "invalid_type_name"})
+def test_cast_medical_missing_values():
+    data = {
+        "age": ["45", ".", "50"],
+        "diagnosis": ["A", "B", "."]
+    }
+    df = pd.DataFrame(data)
+    
+    casted_df = prepro.cast(
+        df,
+        dtypes={"age": "Int64", "diagnosis": "category"},
+        na_values=["."]
+    )
+    
+    assert pd.isna(casted_df.loc[1, "age"])
+    assert pd.isna(casted_df.loc[2, "diagnosis"])
 
-    # Value conversion failures
-    df_fail = pd.DataFrame({"A": ["1", "two", "3"]})
-    with pytest.raises((ValueError, TypeError)):
-        cast(df_fail, cast_map={"A": "int"})
+def test_cast_boolean_variations():
+    data = {
+        "col1": [True, False, None],
+        "col2": ["1", "0", "None"],
+        "col3": ["true", "false", "none"],
+        "col4": ["yes", "no", "?"],
+        "col5": ["T", "F", "-"]
+    }
+    df = pd.DataFrame(data)
+    
+    dtypes = {c: "boolean" for c in df.columns}
+    casted_df = prepro.cast(df, dtypes=dtypes)
+    
+    for c in df.columns:
+        assert casted_df[c].dtype == "boolean"
+        assert casted_df.loc[0, c] == True
+        assert casted_df.loc[1, c] == False
+        assert pd.isna(casted_df.loc[2, c])
+
+def test_cast_downcast():
+    # Downcasting integers
+    # Min/max fits in Int8
+    data_int8 = {"col": [1, 2, 100, None]}
+    df_int8 = pd.DataFrame(data_int8)
+    res_int8 = prepro.cast(df_int8, dtypes={"col": "Int64"}, downcast=True)
+    assert res_int8["col"].dtype == "Int8"
+    
+    # Min/max fits in Int16 but not Int8
+    data_int16 = {"col": [1000, 2, 20000, None]}
+    df_int16 = pd.DataFrame(data_int16)
+    res_int16 = prepro.cast(df_int16, dtypes={"col": "Int64"}, downcast=True)
+    assert res_int16["col"].dtype == "Int16"
+    
+    # Min/max fits in Int32 but not Int16
+    data_int32 = {"col": [1000000, 2, 2000000, None]}
+    df_int32 = pd.DataFrame(data_int32)
+    res_int32 = prepro.cast(df_int32, dtypes={"col": "Int64"}, downcast=True)
+    assert res_int32["col"].dtype == "Int32"
+    
+    # Float64 downcasts to Float32
+    data_float = {"col": [1.5, 2.7, 3.8, None]}
+    df_float = pd.DataFrame(data_float)
+    res_float = prepro.cast(df_float, dtypes={"col": "Float64"}, downcast=True)
+    assert res_float["col"].dtype == "Float32"
